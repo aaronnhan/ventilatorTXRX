@@ -1,4 +1,4 @@
-#include "SoftModem.h"
+#include "SoftModem.h" 
 
 #define TX_PIN  (3)
 #define RX_PIN1 (6)  // AIN0
@@ -12,6 +12,13 @@ SoftModem::SoftModem() {
 SoftModem::~SoftModem() {
 	end();
 }
+
+//TIMER_CLOCK_SELECT sets the clock prescaling and clock settings (ex: counting up or down, oneshot, clear timer on compare match, etc.)
+//BAUD_RATE affects the rate at which the highs/lows are sampled to decode the data/used to determine speed of transmission.
+//MICROS_PER_TIMER_COUNT is the number of microseconds per clock cycle. this is used so when we count microseconds to time sampling of data, we can do it in terms of clock cycles instead of microseconds.
+
+//Also should note(this is with uno, but may be applicable to due):  The ATmega328P uses a hardware divisor from it's clock-rate to generate the base-clock for the serial interface. 
+//If there is no integer ratio from the main clock to the bit-time of the desired baud rate, the MCU will not be able to exactly produce the desired rate. This can lead to errors.
 
 #if F_CPU == 16000000
 #if SOFT_MODEM_BAUD_RATE <= 126
@@ -46,19 +53,29 @@ SoftModem::~SoftModem() {
 #endif
 #endif
 
+//BIT_PERIOD is the period of one bit AKA time to fully send 1 bit
+//HIGH_FREQ_MICROS is the period of one high freq signal or time for one high freq signal to complete
+//LOW_FREQ_MICROS is the period of one low freq signal or time for one low freq signal to complete
 #define BIT_PERIOD            (1000000/SOFT_MODEM_BAUD_RATE)
 #define HIGH_FREQ_MICROS      (1000000/SOFT_MODEM_HIGH_FREQ)
 #define LOW_FREQ_MICROS       (1000000/SOFT_MODEM_LOW_FREQ)
 
+//HIGH_FREQ_CNT is how many high frequency signals should be sent to signal 1 high bit
+//LOW_FREQ_CNT is how many low frequency signals should be sent to signal 1 low bit
 #define HIGH_FREQ_CNT         (BIT_PERIOD/HIGH_FREQ_MICROS)
 #define LOW_FREQ_CNT          (BIT_PERIOD/LOW_FREQ_MICROS)
 
+//MAX_CARRIR_BITS is the max length of the message the softmodem sends including preamble.
 #define MAX_CARRIR_BITS	      (40000/BIT_PERIOD)
 
+//TCNT_BIT_PERIOD is the number of clock cycles to fully send 1 bit
+//TCNT_HIGH_FREQ is the number of clock cycles for one high frequency signal to complete
+//TCNT_LOW_FREQ is the number of clock cycles for one low frequency signal to complete
 #define TCNT_BIT_PERIOD		  (BIT_PERIOD/MICROS_PER_TIMER_COUNT)
 #define TCNT_HIGH_FREQ		  (HIGH_FREQ_MICROS/MICROS_PER_TIMER_COUNT)
 #define TCNT_LOW_FREQ		  (LOW_FREQ_MICROS/MICROS_PER_TIMER_COUNT)
 
+//Low/high thresholds for the number of clock cycles for one high/low frequency signal to complete 
 #define TCNT_HIGH_TH_L		  (TCNT_HIGH_FREQ * 0.90)
 #define TCNT_HIGH_TH_H		  (TCNT_HIGH_FREQ * 1.15)
 #define TCNT_LOW_TH_L		  (TCNT_LOW_FREQ * 0.85)
@@ -73,15 +90,23 @@ enum { START_BIT = 0, DATA_BIT = 8, STOP_BIT = 9, INACTIVE = 0xff };
 
 void SoftModem::begin(void)
 {
+	//initalize first rx pin as input pin.
+	//If the pin is configured as an INPUT, digitalWrite() will enable (HIGH) or disable (LOW) the internal pullup on the input pin.
 	pinMode(RX_PIN1, INPUT);
 	digitalWrite(RX_PIN1, LOW);
 	
+	//initalize second rx pin as input pin.
+    //If the pin is configured as an INPUT, digitalWrite() will enable (HIGH) or disable (LOW) the internal pullup on the input pin.
 	pinMode(RX_PIN2, INPUT);
 	digitalWrite(RX_PIN2, LOW);
 	
+	//initalize third rx pin as output pin.
+    //pin value/voltage set to 0.
 	pinMode(TX_PIN, OUTPUT);
 	digitalWrite(TX_PIN, LOW);
 	
+	//Set _txPortReg as the register that contains the TX pin
+	//Set _txPortMask as the bitmask to access the specific pin bits we need of the register
 	_txPortReg = portOutputRegister(digitalPinToPort(TX_PIN));
 	_txPortMask = digitalPinToBitMask(TX_PIN);
 	
@@ -91,14 +116,22 @@ void SoftModem::begin(void)
 	pinMode(13, OUTPUT);
 #endif
 	
+    // _recvstat keeps track of if bits are being received and if so, which bit is being processed (start, data, stop)
+	//recvBufferHead/Tail are used as pointers in the recvBuffer buffer
 	_recvStat = INACTIVE;
 	_recvBufferHead = _recvBufferTail = 0;
 	
 	SoftModem::activeObject = this;
 	
+	//_lastTCNT keeps track of time since modem was started
+	//_lastdiff is the time since the last message was demodulated
 	_lastTCNT = TCNT2;
 	_lastDiff = _lowCount = _highCount = 0;
 	
+	//TCCR2A sets timer2 to normal mode
+	//TCCR2B sets which prescaling setting to use
+	//ACSR is set which enables comparator interrupts for the clock and sets the interrupt to be on the falling edge of the clock
+	//DIDR1 is set to disable digital input on the AIN1/0 pins. Likely to reduce power consumption.
 	TCCR2A = 0;
 	TCCR2B = TIMER_CLOCK_SELECT;
 	ACSR   = _BV(ACIE) | _BV(ACIS1);
@@ -107,6 +140,10 @@ void SoftModem::begin(void)
 
 void SoftModem::end(void)
 {
+	//ACSR is set to disable comparator interrupts
+	//TIMSK2 sets the timer interrupt mask bit on timer 2 off
+	//DIDR1 enables digital input on AIN1/0 pins
+	//dereferences instance of SoftModem object
 	ACSR   &= ~(_BV(ACIE));
 	TIMSK2 &= ~(_BV(OCIE2A));
 	DIDR1  &= ~(_BV(AIN1D) | _BV(AIN0D));
@@ -118,13 +155,16 @@ void SoftModem::demodulate(void)
 	uint8_t t = TCNT2;
 	uint8_t diff;
 	
+	//diff is time since last demodulation
 	diff = t - _lastTCNT;
 	
+	//if demodulation is happening too quickly after last (last should still be going on), abort
 	if(diff < 4)
 		return;
 	
 	_lastTCNT = t;
 	
+	//TODO not sure
 	if(diff > (uint8_t)(TCNT_LOW_TH_H))
 		return;
 	
