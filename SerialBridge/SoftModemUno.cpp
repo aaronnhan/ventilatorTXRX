@@ -259,6 +259,7 @@ void SoftModem::recv(void)
 	else{
 	end_recv:
 		_recvStat = INACTIVE;
+    // Disable compare match interrupt
 		TIMSK2 &= ~_BV(OCIE2A);
 	}
 }
@@ -313,14 +314,20 @@ void SoftModem::modulate(uint8_t b)
 	do {
 		cnt--;
 		{
+      //add tcnt to the output compare register value B
 			OCR2B += tcnt;
+      //Clear output compare register flag B
 			TIFR2 |= _BV(OCF2B);
+      //While there isn't a compare match
 			while(!(TIFR2 & _BV(OCF2B)));
 		}
 		*_txPortReg ^= _txPortMask;
 		{
+      //add tcnt to the output compare register value B
 			OCR2B += tcnt2;
+      //Clear output compare register flag B
 			TIFR2 |= _BV(OCF2B);
+      //While there isn't a compare match
 			while(!(TIFR2 & _BV(OCF2B)));
 		}
 		*_txPortReg ^= _txPortMask;
