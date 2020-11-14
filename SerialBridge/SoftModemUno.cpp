@@ -259,6 +259,7 @@ void SoftModem::recv(void)
 	else{
 	end_recv:
 		_recvStat = INACTIVE;
+    // Disable compare match interrupt
 		TIMSK2 &= ~_BV(OCIE2A);
 	}
 }
