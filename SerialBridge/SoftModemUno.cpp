@@ -183,8 +183,11 @@ void SoftModem::demodulate(void)
 				_recvStat = START_BIT;
 				_highCount = 0;
 				_recvBits  = 0;
+        // set timer compare register value to t + (uint8_t)(TCNT_BIT_PERIOD) - _lowCount;
 				OCR2A = t + (uint8_t)(TCNT_BIT_PERIOD) - _lowCount;
+        //Clear compare match flag for compare match
 				TIFR2 |= _BV(OCF2A);
+        //Enable TC compare match interrupt
 				TIMSK2 |= _BV(OCIE2A);
 			}
 		}
