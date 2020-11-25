@@ -1,6 +1,6 @@
 //#include "SoftModem.h" 
 //
-#define TX_PIN  (313
+#define TX_PIN  (13)
 #define RX_PIN (2)
 //#define RX_PIN2 (7)  // Not Needed?
 //
@@ -13,7 +13,18 @@ inline void digitalWriteDirect(int pin, boolean val){
 inline int digitalReadDirect(int pin){
   return !!(g_APinDescription[pin].pPort -> PIO_PDSR & g_APinDescription[pin].ulPin);
 }
-
+void setup() {
+  pinMode(TX_PIN,OUTPUT);
+}
+int a;
+void loop() {
+   while(1){
+    a = digitalReadDirect(RX_PIN);  
+    digitalWriteDirect(TX_PIN,HIGH);
+    a = digitalReadDirect(RX_PIN);
+    digitalWriteDirect(TX_PIN,LOW);
+  }
+}
 //SoftModem *SoftModem::activeObject = 0;
 //
 //SoftModem::SoftModem() {
