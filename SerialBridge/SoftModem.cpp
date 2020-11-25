@@ -1,9 +1,13 @@
-//#include "SoftModem.h" 
-//
-#define TX_PIN  (13)
+//#include <Arduino.h>
+#define TX_PIN (13)
 #define RX_PIN (2)
-//#define RX_PIN2 (7)  // Not Needed?
-//
+
+volatile long unsigned int * _txPortReg;
+uint8_t _txPortMask;
+long previousMillis = 0; // will store last time of the cycle end
+volatile unsigned long lastFreq = 0; // stores value of last frequency
+volatile unsigned long freqStart = micros(); // stores value of last frequency
+volatile unsigned long previousMicros=0;
 
 inline void digitalWriteDirect(int pin, boolean val){
   if(val) g_APinDescription[pin].pPort -> PIO_SODR = g_APinDescription[pin].ulPin;
@@ -13,17 +17,66 @@ inline void digitalWriteDirect(int pin, boolean val){
 inline int digitalReadDirect(int pin){
   return !!(g_APinDescription[pin].pPort -> PIO_PDSR & g_APinDescription[pin].ulPin);
 }
+
 void setup() {
-  pinMode(TX_PIN,OUTPUT);
+  Serial.begin(9600);
+  Serial.println("Booting");
+  delay(100);
+
+  pinMode(RX_PIN, INPUT);
+  digitalWrite(RX_PIN, LOW);
+
+  pinMode(TX_PIN, OUTPUT);
+  digitalWrite(TX_PIN, LOW);
+
+  attachInterrupt(13, myinthandler, RISING);
+
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1); //2
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1); //2
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1); //2
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+
+  digitalWriteDirect(TX_PIN, 1); //2
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1); //4
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1); //4
 }
-int a;
+
+void myinthandler() // interrupt handler
+{
+  unsigned long int currMicros = micros();
+  unsigned long int currFreq = currMicros - previousMicros;
+  Serial.println(currFreq);
+  //if(abs(currFreq - lastFreq) > 1000){
+  //  Serial.println(lastFreq);
+  //  Serial.println(freqStart - currMicros);
+  //  freqStart = currMicros;
+  //  lastFreq = currFreq;
+  //}
+  previousMicros = currMicros;
+}
+
+
+
 void loop() {
-   while(1){
-    a = digitalReadDirect(RX_PIN);  
-    digitalWriteDirect(TX_PIN,HIGH);
-    a = digitalReadDirect(RX_PIN);
-    digitalWriteDirect(TX_PIN,LOW);
-  }
+  delay(2000);
 }
 //SoftModem *SoftModem::activeObject = 0;
 //
