@@ -4,6 +4,8 @@
 
 volatile long unsigned int * _txPortReg;
 uint8_t _txPortMask;
+//------THESE ARE ALREADY IN SOFTMODEM.H-------------//
+
 long previousMillis = 0; // will store last time of the cycle end
 volatile unsigned long lastFreq = 0; // stores value of last frequency
 volatile unsigned long freqStart = micros(); // stores value of last frequency
@@ -29,8 +31,9 @@ void setup() {
   pinMode(TX_PIN, OUTPUT);
   digitalWrite(TX_PIN, LOW);
 
-  attachInterrupt(13, myinthandler, RISING);
-
+//  attachInterrupt(13, myinthandler, RISING);
+  attachInterrupt(digitalPinToInterrupt(TX_PIN), myinthandler, RISING);
+  
   digitalWriteDirect(TX_PIN, 1);
   delay(1);
   digitalWriteDirect(TX_PIN, 0);
@@ -57,6 +60,9 @@ void setup() {
   digitalWriteDirect(TX_PIN, 0);
   delay(2);
   digitalWriteDirect(TX_PIN, 1); //4
+
+  _txPortReg = portOutputRegister(digitalPinToPort(TX_PIN));
+  _txPortMask = digitalPinToBitMask(TX_PIN)
 }
 
 void myinthandler() // interrupt handler
@@ -78,6 +84,9 @@ void myinthandler() // interrupt handler
 void loop() {
   delay(2000);
 }
+
+
+
 //SoftModem *SoftModem::activeObject = 0;
 //
 //SoftModem::SoftModem() {
