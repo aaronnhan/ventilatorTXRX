@@ -2,6 +2,14 @@
 #define TX_PIN (13)
 #define RX_PIN (2)
 
+#define SOFT_MODEM_HIGH_FREQ  (7350)
+#define SOFT_MODEM_LOW_FREQ   (4900)
+#define SOFT_MODEM_BAUD_RATE  (1225)
+#define BIT_PERIOD            (1000000/SOFT_MODEM_BAUD_RATE)
+#define HIGH_FREQ_MICROS      (1000000/SOFT_MODEM_HIGH_FREQ)
+#define LOW_FREQ_MICROS       (1000000/SOFT_MODEM_LOW_FREQ)
+#define MAX_CARRIR_BITS       (40000/BIT_PERIOD)
+
 volatile long unsigned int * _txPortReg;
 uint8_t _txPortMask;
 //------THESE ARE ALREADY IN SOFTMODEM.H-------------//
@@ -84,8 +92,14 @@ void myinthandler() // interrupt handler
 void loop() {
   delay(2000);
 }
+void modulate(uint_t b){
+  
+}
 
-
+size_t write(const uint8_t *buffer, size_t size){
+  uint8_t cnt = ((micros() - _lastWriteTime) / BIT_PERIOD) + 1;
+  if (cnt > MAX_CARRIR_BITS) cnt = MAX_CARRIR_BITS;
+}
 
 //SoftModem *SoftModem::activeObject = 0;
 //
