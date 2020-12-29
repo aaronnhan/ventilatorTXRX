@@ -1,22 +1,29 @@
 #include <DueTimer.h>
+
 #include <Arduino.h>
 #define TX_PIN (13)
 #define RX_PIN (2)
 
+#define HIGH_FREQ 1000
+#define LOW_FREQ 2000
+#define PERIOD 8000
+#define FREQ_ERR_MARGIN 100
+#define PREAMBLE_LENGTH 49
+
+#define STANDBY_STATE 0
+#define PREAMBLE_STATE 1
+#define RECEIVING_STATE 2
+
+
 volatile long unsigned int * _txPortReg;
 uint8_t _txPortMask;
-//------THESE ARE ALREADY IN SOFTMODEM.H-------------//
-
-
-
-long previousMillis = 0; // will store last time of the cycle end
-volatile unsigned long lastFreq = 0; // stores value of last frequency
-volatile unsigned long freqStart = micros(); // stores value of last frequency
 volatile unsigned long previousMicros=0;
 volatile unsigned long int currFreq = 0;
 volatile uint8_t recvBuffer[8];
-
+volatile int recvState = 0; 
+volatile int bitIndex = 0;
 volatile int bufferIndex = 0;
+volatile bool started = false;
 
 inline void digitalWriteDirect(int pin, boolean val){
   if(val) g_APinDescription[pin].pPort -> PIO_SODR = g_APinDescription[pin].ulPin;
@@ -39,63 +46,90 @@ void setup() {
   digitalWrite(TX_PIN, LOW);
 
   attachInterrupt(13, myfreqhandler, RISING);
-
-  digitalWriteDirect(TX_PIN, 1);
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
-  digitalWriteDirect(TX_PIN, 1); //2
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
-  digitalWriteDirect(TX_PIN, 1); //2
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
-  digitalWriteDirect(TX_PIN, 1); //2
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
-  Timer3.attachInterrupt(mybufferhandler).start(8000);
-  digitalWriteDirect(TX_PIN, 1); //2
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
-  digitalWriteDirect(TX_PIN, 1); //2
-  delay(1);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(1);
 }
 
 void mybufferhandler()
 {
-  int bitVal = (abs(currFreq - 2000) < 100);
-  if(bufferIndex == 7){
-    recvBuffer[7] = bitVal;
-    int myChar = 0;
-    for(int i = 0; i < 8; i++){
-      myChar <<= 1;
-      myChar |= recvBuffer[i];
+  if(recvState == PREAMBLE_STATE){ //PREAMBLE STATE
+    bitIndex +=1;
+    if(bitIndex == PREAMBLE_LENGTH - 1){
+      recvState = RECEVING_STATE;
     }
-    Serial.println(char(myChar));
-    bufferIndex = 0;
   } else{
-    recvBuffer[bufferIndex] = bitVal;
-    //Serial.println(bitVal);
-    bufferIndex += 1;
+    int bitVal = (abs(currFreq - LOW_FREQ) < FREQ_ERR_MARGIN);
+    if(recvState == STANDBY_STATE){ //STANDBY STATE, CHECK IF START OF PREAMBLE SENT
+        if(bitVal == 1){ 
+          recvState = PREAMBLE_STATE;
+          bitIndex += 1;
+        }
+      } else if(bufferIndex == 9){ //RECEIVING STATE, character ready to be decoded
+      int myChar = 0;
+      for(int i = 8; i > 0; i--){ //Only capture inner 8 bits, not 0 index or 9 index
+        myChar <<= 1;
+        myChar |= recvBuffer[i];
+      }
+      if(myChar == 0 && recvBuffer[0] == 1 && recvBuffer[9] == 0 && recvState == RECEVING_STATE){ //STOP SIGNAL
+        Timer3.detachInterrupt();
+        Timer3.stop();
+        bitIndex = 0;
+      } else{
+              Serial.println(char(myChar));
+      }
+      bufferIndex = 0;
+    } else{                    //RECEIVING STATE, character not ready to be decoded
+      recvBuffer[bufferIndex] = bitVal;
+      bufferIndex += 1;
+    }
   }
 }
 
 void myfreqhandler() // interrupt handler
 {
+  //If message is starting, set up periodic freq check
+  if(!started){
+    started = true;
+    recvState = STANDBY_STATE;
+    Timer2.attachInterrupt(setFreqCheck).start(PERIOD/2);
+  }
+  //Update current frequency
   unsigned long int currMicros = micros();
   currFreq = currMicros - previousMicros;
   previousMicros = currMicros;
 }
 
+void setFreqCheck() //Set up periodic checks of frequency
+{
+  Timer3.attachInterrupt(mybufferhandler).start(PERIOD);
+  Timer2.detachInterrupt();
+  Timer2.stop();
+}
 
 
-void loop() {//01000001
+
+void loop() {//preamble + a + stop signal
+
+  //Preamble
+  for(int i = 0; i < PREAMBLE_LENGTH; i++){
+    //1
+    digitalWriteDirect(TX_PIN, 1);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 0);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 1);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 0);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 1);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 0);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 1);
+    delay(1);
+    digitalWriteDirect(TX_PIN, 0);
+    delay(1);
+  }
+
+  //"a"
   //0
   digitalWriteDirect(TX_PIN, 1);
   delay(2);
@@ -105,7 +139,7 @@ void loop() {//01000001
   delay(2);
   digitalWriteDirect(TX_PIN, 0);
   delay(2);
-
+    
   //1
   digitalWriteDirect(TX_PIN, 1);
   delay(1);
@@ -123,16 +157,6 @@ void loop() {//01000001
   delay(1);
   digitalWriteDirect(TX_PIN, 0);
   delay(1);
-
-    //0
-  digitalWriteDirect(TX_PIN, 1);
-  delay(2);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(2);
-  digitalWriteDirect(TX_PIN, 1);
-  delay(2);
-  digitalWriteDirect(TX_PIN, 0);
-  delay(2);
 
     //0
   digitalWriteDirect(TX_PIN, 1);
@@ -191,6 +215,141 @@ void loop() {//01000001
   delay(1);
   digitalWriteDirect(TX_PIN, 0);
   delay(1);
+    
+  //1
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //1
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+
+  //STOP BIT
+  //1
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(1);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(1);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+
+  //0
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 1);
+  delay(2);
+  digitalWriteDirect(TX_PIN, 0);
+  delay(2);
 }
 
 
