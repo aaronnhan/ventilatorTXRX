@@ -53,7 +53,7 @@ void mybufferhandler()
   if(recvState == PREAMBLE_STATE){ //PREAMBLE STATE
     bitIndex +=1;
     if(bitIndex == PREAMBLE_LENGTH - 1){
-      recvState = RECEVING_STATE;
+      recvState = RECEIVING_STATE;
     }
   } else{
     int bitVal = (abs(currFreq - LOW_FREQ) < FREQ_ERR_MARGIN);
@@ -68,7 +68,7 @@ void mybufferhandler()
         myChar <<= 1;
         myChar |= recvBuffer[i];
       }
-      if(myChar == 0 && recvBuffer[0] == 1 && recvBuffer[9] == 0 && recvState == RECEVING_STATE){ //STOP SIGNAL
+      if(myChar == 0 && recvBuffer[0] == 1 && recvBuffer[9] == 0 && recvState == RECEIVING_STATE){ //STOP SIGNAL
         Timer3.detachInterrupt();
         Timer3.stop();
         bitIndex = 0;
@@ -466,7 +466,7 @@ void loop() {//preamble + a + stop signal
 //#endif
 //  
 //    // _recvstat keeps track of if bits are being received and if so, which bit is being processed (start, data, stop)
-//  //recvBufferHead/Tail are used as pointers in the recvBuffer buffer
+e/  //recvBufferHead/Tail are used as pointers in the recvBuffer buffer
 //  _recvStat = INACTIVE;
 //  _recvBufferHead = _recvBufferTail = 0;
 //  
