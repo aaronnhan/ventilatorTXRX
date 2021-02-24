@@ -40,7 +40,7 @@ void setup() {
   delay(100);
 
   pinMode(RX_PIN, INPUT);
-  digitalWrite(RX_PIN, LOW);
+  //digitalWrite(RX_PIN, LOW);
 
   pinMode(TX_PIN, OUTPUT);
   digitalWrite(TX_PIN, LOW);
